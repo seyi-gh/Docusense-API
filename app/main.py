@@ -1,9 +1,12 @@
 import os
 import sys
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routers import auth, documents, chat
+
+logger = logging.getLogger(__name__)
 
 # Validate required environment variables
 required_env_vars = [
@@ -23,14 +26,24 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Configure CORS from environment
-allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
-allowed_origins = [origin.strip() for origin in allowed_origins]
+raw_allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000')
+origin_tokens = raw_allowed_origins.replace('\n', ',').replace(';', ',').split(',')
+allowed_origins = []
+for token in origin_tokens:
+  normalized = token.strip().strip('"').strip("'").rstrip('/')
+  if normalized:
+    allowed_origins.append(normalized)
+
+# Remove duplicates while preserving order
+allowed_origins = list(dict.fromkeys(allowed_origins))
+
+logger.info('CORS allowed origins: %s', allowed_origins)
 
 app.add_middleware(
   CORSMiddleware,
   allow_origins=allowed_origins,
   allow_methods=['GET', 'POST', 'OPTIONS'],
-  allow_headers=['Content-Type', 'Authorization'],
+  allow_headers=['*'],
   allow_credentials=True,
   max_age=3600,
 )
