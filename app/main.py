@@ -42,7 +42,7 @@ logger.info('CORS allowed origins: %s', allowed_origins)
 app.add_middleware(
   CORSMiddleware,
   allow_origins=allowed_origins,
-  allow_methods=['GET', 'POST', 'OPTIONS'],
+  allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allow_headers=['*'],
   allow_credentials=True,
   max_age=3600,

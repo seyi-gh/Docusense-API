@@ -7,11 +7,18 @@ from ..auth import get_current_user
 from ..services.pdf_parser import extract_text
 from typing import List
 import uuid
+import logging
 from textwrap import dedent
 
 router = APIRouter(prefix='/documents', tags=['documents'])
+logger = logging.getLogger(__name__)
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
+
+NO_TEXT_PLACEHOLDER = (
+  'No se pudo extraer texto del PDF. '
+  'Esto suele pasar con PDFs escaneados o protegidos.'
+)
 
 DEMO_DOCUMENT_TEXT = dedent('''
   Documento de prueba de DocuSense.
@@ -46,15 +53,17 @@ async def upload(
     raise HTTPException(status_code=400, detail='Solo se permiten archivos PDF válidos')
 
   if len(file_bytes) > MAX_FILE_SIZE:
-    raise HTTPException(status_code=400, detail='Archivo mayor a 10MB')
+    raise HTTPException(status_code=400, detail='Archivo mayor a 25MB')
 
+  text = ''
   try:
     text = extract_text(file_bytes)
-  except Exception:
-    raise HTTPException(status_code=400, detail='No se pudo procesar el PDF')
+  except Exception as exc:
+    logger.warning('PDF processing failed for %s: %s', file.filename, exc)
 
   if not text.strip():
-    raise HTTPException(status_code=400, detail='No se pudo extraer texto del PDF')
+    logger.warning('No text extracted from PDF: %s', file.filename)
+    text = NO_TEXT_PLACEHOLDER
 
   doc = Document(
     user_id=user.id,
