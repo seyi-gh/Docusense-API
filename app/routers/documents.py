@@ -35,15 +35,23 @@ async def upload(
   user=Depends(get_current_user),
   db: Session = Depends(get_db)
 ):
-  if file.content_type != 'application/pdf':
-    raise HTTPException(status_code=400, detail='Solo se permiten archivos PDF')
-
   file_bytes = await file.read()
+
+  filename = (file.filename or '').lower()
+  is_pdf_by_name = filename.endswith('.pdf')
+  is_pdf_by_type = (file.content_type or '').lower() == 'application/pdf'
+  is_pdf_by_magic = file_bytes.startswith(b'%PDF-')
+
+  if not (is_pdf_by_name or is_pdf_by_type or is_pdf_by_magic):
+    raise HTTPException(status_code=400, detail='Solo se permiten archivos PDF válidos')
 
   if len(file_bytes) > MAX_FILE_SIZE:
     raise HTTPException(status_code=400, detail='Archivo mayor a 10MB')
 
-  text = extract_text(file_bytes)
+  try:
+    text = extract_text(file_bytes)
+  except Exception:
+    raise HTTPException(status_code=400, detail='No se pudo procesar el PDF')
 
   if not text.strip():
     raise HTTPException(status_code=400, detail='No se pudo extraer texto del PDF')
