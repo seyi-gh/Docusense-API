@@ -11,6 +11,7 @@ defusedxml==0.7.1
 distro==1.9.0
 ecdsa==0.19.2
 fastapi==0.135.3
+email-validator==2.3.0
 flatbuffers==25.12.19
 greenlet==3.4.0
 h11==0.16.0
