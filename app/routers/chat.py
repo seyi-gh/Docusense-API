@@ -25,6 +25,7 @@ DEFAULT_MODELS = {
 }
 
 PROJECT_KEY_COOLDOWN = timedelta(days=2)
+PROJECT_KEY_MAX_REQUESTS = 5  # Máximo 5 requests cada 48 horas
 
 PROVIDER_ENV_KEYS = {
   'openai': 'OPENAI_API_KEY',
@@ -72,16 +73,28 @@ def resolve_provider_settings(provider_config: ProviderConfig):
 
 
 def get_project_key_cooldown_remaining_ms(db: Session, user_id):
-  latest_usage = db.query(ProjectKeyUsage).filter(
-    ProjectKeyUsage.user_id == user_id,
-  ).order_by(desc(ProjectKeyUsage.created_at)).first()
-
-  if not latest_usage:
-    return 0
-
+  """Check if user has exceeded 5 requests in the last 48 hours."""
   now = datetime.now(timezone.utc)
-  remaining = (latest_usage.created_at + PROJECT_KEY_COOLDOWN) - now
-  return max(0, int(remaining.total_seconds() * 1000))
+  window_start = now - PROJECT_KEY_COOLDOWN
+  
+  # Count requests in the last 48 hours
+  recent_requests = db.query(ProjectKeyUsage).filter(
+    ProjectKeyUsage.user_id == user_id,
+    ProjectKeyUsage.created_at >= window_start,
+  ).count()
+  
+  if recent_requests >= PROJECT_KEY_MAX_REQUESTS:
+    # Find the oldest request in the window to calculate when the cooldown ends
+    oldest_usage = db.query(ProjectKeyUsage).filter(
+      ProjectKeyUsage.user_id == user_id,
+      ProjectKeyUsage.created_at >= window_start,
+    ).order_by(ProjectKeyUsage.created_at).first()
+    
+    if oldest_usage:
+      remaining = (oldest_usage.created_at + PROJECT_KEY_COOLDOWN) - now
+      return max(0, int(remaining.total_seconds() * 1000))
+  
+  return 0
 
 
 def stream_anthropic(api_key: str, model: str, system_prompt: str, messages: list[dict]):
@@ -181,11 +194,11 @@ Cita la parte relevante cuando sea posible.'''
   if body.provider_config.use_project_key:
     remaining_ms = get_project_key_cooldown_remaining_ms(db, user.id)
     if remaining_ms > 0:
-      logger.warning(f'Project API cooldown active for user {user.id}')
+      logger.warning(f'Project API rate limit exceeded for user {user.id}')
       raise HTTPException(
         status_code=429,
         detail={
-          'message': 'La API del proyecto sigue en cooldown. Usa tu propia clave o espera 48 horas.',
+          'message': f'Límite de {PROJECT_KEY_MAX_REQUESTS} requests cada 48 horas alcanzado. Usa tu propia clave o espera a que expire la ventana.',
           'retry_after_ms': remaining_ms,
         },
       )
